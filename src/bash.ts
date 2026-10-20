@@ -59,9 +59,11 @@ export function extractBash(session: Session): Inventory {
       const ancestors = new Set<string>();
       const pending = new Set(candidates.map(c => c.entry.id));
       let id = result.entry.parentId;
+      let beforeLine = result.entry.line;
       while (id !== null && !ancestors.has(id) && pending.size > 0) {
         const entry = byId.get(id);
-        if (!entry || entry.line >= result.entry.line) break;
+        if (!entry || entry.line >= beforeLine) break;
+        beforeLine = entry.line;
         ancestors.add(id);
         pending.delete(id);
         id = entry.parentId;

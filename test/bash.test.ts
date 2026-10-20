@@ -21,6 +21,11 @@ test('never matches a result to a sibling branch or a future call', () => {
   assert.equal(data.unmatchedResults.length, 2);
 });
 
+test('a malformed forward parent cannot establish call ancestry', () => {
+  const data = extract(call('a', 'future', 'other'), call('future', null, 'target'), result('r', 'a', 'target'));
+  assert.equal(totals(data).completed, 0);
+});
+
 test('same provider ID on independent branches is resolved by ancestry', () => {
   const data = extract(call('a', null, 'shared'), result('b', 'a', 'shared'),
     call('c', null, 'shared'), result('d', 'c', 'shared', true));
