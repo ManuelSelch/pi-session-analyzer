@@ -6,6 +6,7 @@ export interface BashCall {
   source: Evidence; toolCallId: string; command: string | null;
   outcome: 'success' | 'error' | 'unmatched' | 'ambiguous' | 'unknown';
   result: Evidence | null; output: string;
+  suspectedRetry?: { kind: 'inferred'; rule: string; previousCall: Evidence };
 }
 export interface Inventory { calls: BashCall[]; unmatchedResults: Evidence[]; directExecutions: number; warnings: Warning[] }
 const isBash = (name: unknown) => typeof name === 'string' && name.split('.').at(-1) === 'bash';
@@ -92,6 +93,14 @@ export function extractBash(session: Session): Inventory {
     call.output = match.output;
     call.outcome = typeof match.isError === 'boolean' ? (match.isError ? 'error' : 'success') : 'unknown';
     if (call.outcome === 'unknown') warn('missing_error_flag', match.entry);
+  }
+  const failuresByResult = new Map(inventory.calls.filter(c => c.outcome === 'error' && c.result).map(c => [c.result!.entryId, c]));
+  for (const call of inventory.calls) {
+    const parentId = byId.get(call.source.entryId)?.parentId;
+    const previous = parentId ? failuresByResult.get(parentId) : undefined;
+    if (previous && call.command !== null && call.command === previous.command) {
+      call.suspectedRetry = { kind: 'inferred', rule: 'identical_command_immediately_after_failed_result', previousCall: previous.source };
+    }
   }
   return inventory;
 }

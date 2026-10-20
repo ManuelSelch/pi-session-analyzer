@@ -47,6 +47,14 @@ test('distinguishes direct shell executions, invalid outcomes, and absent denomi
   assert.equal(totals(data).errorRate, null);
 });
 
+test('labels only immediate identical-command repeats on the same branch as inferred retries', () => {
+  const data = extract(call('a', null, 'a', 'git status'), result('b', 'a', 'a', true),
+    call('c', 'b', 'c', 'git status'), result('d', 'c', 'c'), call('e', null, 'e', 'git status'));
+  assert.equal(data.calls[1].suspectedRetry?.kind, 'inferred');
+  assert.equal(data.calls[1].suspectedRetry?.previousCall.entryId, 'a');
+  assert.equal(data.calls[2].suspectedRetry, undefined);
+});
+
 test('duplicate entry IDs cannot produce a trusted completion', () => {
   const data = extract(call('a', null), call('a', null, 'different'), result('b', 'a', 'a'));
   assert.equal(totals(data).completed, 0);

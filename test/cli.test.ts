@@ -50,6 +50,31 @@ test('calls paginate, filter failures, and reveal only explicitly requested boun
   assert.equal('output' in paged.calls[0], false);
 }));
 
+test('ranks heuristic families and reasons with reconciled counts, privacy, and bounded examples', async () => fixture(async root => {
+  const file = join(root, 'a.jsonl');
+  await writeFile(file, jsonl(header(), call('a', null, 'a', 'rg SECRET .'), result('b', 'a', 'a', true, 'Command exited with code 1'),
+    call('c', 'b', 'c', 'ls missing'), result('d', 'c', 'c', true, 'SECRET_PATH: No such file or directory'),
+    call('e', 'd', 'e', 'git status'), result('f', 'e', 'e')));
+  const r = run('bash', 'summary', '--root', root);
+  assert.equal(r.status, 0, r.stderr);
+  const report = JSON.parse(r.stdout);
+  assert.equal(report.classification.version, 'bash-rules-v1');
+  assert.equal(report.classification.families.reduce((n: number, g: { calls: number }) => n + g.calls, 0), 3);
+  assert.equal(report.classification.failureReasons.reduce((n: number, g: { errors: number }) => n + g.errors, 0), 2);
+  assert.equal(report.classification.opportunities[0].label, 'file_discovery');
+  assert.equal(report.classification.opportunities[0].potentiallyAvoidableErrors, 1);
+  assert.equal(report.classification.families[0].shareOfAllFailures, 0.5);
+  assert.equal(report.classification.families[0].affectedSessions, 1);
+  assert.equal(report.classification.families[0].affectedProjects, 1);
+  assert.equal(r.stdout.includes('SECRET'), false);
+  const details = JSON.parse(run('bash', 'calls', file, '--family', 'text_search', '--reason', 'no_matches_possible').stdout);
+  assert.equal(details.calls.length, 1);
+  assert.equal(details.calls[0].classification.failure.label, 'no_matches_possible');
+  const examples = JSON.parse(run('bash', 'summary', '--root', root, '--include-content').stdout);
+  assert.ok(JSON.stringify(examples).includes('SECRET'));
+  assert.ok(examples.classification.families.every((g: { examples: unknown[] }) => g.examples.length <= 3));
+}));
+
 test('conflicting session copies are skipped rather than silently merged', async () => fixture(async root => {
   await writeFile(join(root, 'a.jsonl'), jsonl(header(), call('a', null)));
   await writeFile(join(root, 'b.jsonl'), jsonl(header(), call('b', null)));
