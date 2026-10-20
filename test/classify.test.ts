@@ -11,8 +11,35 @@ test('recognizes common purposes, assignments, paths, quotes, and same-family co
     ['git diff 2>&1', 'git'], ['rg foo a 2>/dev/null', 'text_search'],
     ['python3 -c "print(1)"', 'scripts'], ['/usr/bin/git status', 'git'], ['CI=1 npm test', 'tests_builds'],
     ['curl https://example.test', 'network'], ['mkdir -p tmp', 'file_operations'], ['cat README.md', 'file_reading'],
+    ['playwright test', 'tests_builds'], ['swift test', 'tests_builds'], ['xcodebuild test', 'tests_builds'],
   ];
   for (const [command, expected] of cases) assert.equal(commandFamily(command).label, expected, command);
+});
+
+test('runner wrappers are transparent to command purpose', () => {
+  const cases: [string, string][] = [
+    ['npx vitest run test/a.test.ts', 'tests_builds'],
+    ['npx --yes vitest run test/a.test.ts', 'tests_builds'],
+    ['npx --package=typescript tsc --noEmit', 'tests_builds'],
+    ['npx -p typescript tsc --noEmit', 'tests_builds'],
+    ['npx --package typescript tsc --noEmit', 'tests_builds'],
+    ['npx playwright test tests/a.spec.ts', 'tests_builds'],
+    ['npx jest', 'tests_builds'],
+    ['pnpm exec vitest run', 'tests_builds'],
+    ['pnpm dlx playwright test', 'tests_builds'],
+    ['pnpm --silent exec -- vitest run', 'tests_builds'],
+    ['yarn dlx vitest run', 'tests_builds'],
+    ['bunx vitest run', 'tests_builds'],
+    ['pnpx tsc --noEmit', 'tests_builds'],
+    ['npx tsx scripts/check.ts', 'scripts'],
+    ['npx npm test', 'tests_builds'],
+    ['./node_modules/.bin/vitest run', 'tests_builds'],
+    ['./node_modules/.bin/tsc --noEmit', 'tests_builds'],
+  ];
+  for (const [command, expected] of cases) assert.equal(commandFamily(command).label, expected, command);
+  assert.equal(commandFamily('npx prettier --check .').label, 'unknown');
+  assert.equal(commandFamily('npx --yes').label, 'unknown');
+  assert.equal(commandFamily('pnpm exec').label, 'unknown');
 });
 
 test('compound and opaque shell syntax is not classified from its first word alone', () => {
@@ -55,6 +82,8 @@ test('test names and zero cancellation counters do not imply execution cancellat
   assert.equal(failureReason('node --test test/*.ts', output, 'error').label, 'test_or_build_failure');
   assert.equal(failureReason('cd repo && npm test', output, 'error').label, 'test_or_build_failure');
   assert.equal(failureReason('npm test', 'Test Files  1 failed | 2 passed\nTests  2 failed', 'error').label, 'test_or_build_failure');
+  assert.equal(failureReason('npx vitest run test/a.test.ts', 'Test Files  1 failed (1)\nTests  2 failed (2)', 'error').label, 'test_or_build_failure');
+  assert.equal(failureReason('npx tsc --noEmit', 'src/a.ts(1,1): error TS2322: Type mismatch', 'error').label, 'test_or_build_failure');
   assert.equal(failureReason('echo x', 'There were 0 cancelled operations', 'error').label, 'unknown');
 });
 

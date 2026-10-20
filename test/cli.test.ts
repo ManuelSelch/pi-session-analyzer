@@ -58,7 +58,7 @@ test('ranks heuristic families and reasons with reconciled counts, privacy, and 
   const r = run('bash', 'summary', '--root', root);
   assert.equal(r.status, 0, r.stderr);
   const report = JSON.parse(r.stdout);
-  assert.equal(report.classification.version, 'bash-rules-v1');
+  assert.equal(report.classification.version, 'bash-rules-v2');
   assert.equal(report.classification.families.reduce((n: number, g: { calls: number }) => n + g.calls, 0), 3);
   assert.equal(report.classification.failureReasons.reduce((n: number, g: { errors: number }) => n + g.errors, 0), 2);
   assert.equal(report.classification.opportunities[0].label, 'file_discovery');

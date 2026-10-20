@@ -1,6 +1,6 @@
 import type { BashCall } from './bash.ts';
 
-export const CLASSIFIER_VERSION = 'bash-rules-v1';
+export const CLASSIFIER_VERSION = 'bash-rules-v2';
 export interface Family { label: string; rule: string; segmentFamilies: string[] }
 export interface Reason { label: string; rule: string; potentiallyAvoidable: boolean }
 
@@ -28,12 +28,40 @@ function segments(command: string): string[][] | null {
   endSegment();
   return result;
 }
+// Transparent command wrappers are skipped so the wrapped executable, not the
+// launcher, determines the command purpose. Option-like arguments are skipped;
+// only known value-taking options consume the following word.
+function wrapperOptions(args: string[], start: number): number {
+  let index = start;
+  while (index < args.length) {
+    const arg = args[index]!;
+    if (arg === '--') return index - start + 1;
+    if (!arg.startsWith('-')) return index - start;
+    index += arg === '-p' || arg === '--package' ? 2 : 1;
+  }
+  return index - start;
+}
+function wrappedCommand(words: string[], start: number): { exe: string; args: string[] } {
+  let index = start;
+  for (;;) {
+    const exe = (words[index] ?? '').split('/').at(-1) ?? '';
+    const args = words.slice(index + 1);
+    let target = -1;
+    if (['npx', 'bunx', 'pnpx'].includes(exe)) {
+      target = index + 1 + wrapperOptions(args, 0);
+    } else if (['pnpm', 'yarn', 'bun'].includes(exe)) {
+      const action = args.findIndex(arg => arg === 'exec' || arg === 'dlx');
+      if (action >= 0) target = index + action + 2 + wrapperOptions(args, action + 1);
+    }
+    if (target < 0 || target >= words.length) return { exe, args };
+    index = target;
+  }
+}
 function familyFor(words: string[]): string {
   let i = 0;
   while (/^[A-Za-z_]\w*=/.test(words[i] ?? '')) i++;
   if (words[i] === 'env') { i++; while (/^[A-Za-z_]\w*=/.test(words[i] ?? '')) i++; }
-  const exe = (words[i] ?? '').split('/').at(-1) ?? '';
-  const args = words.slice(i + 1);
+  const { exe, args } = wrappedCommand(words, i);
   if (['rg', 'grep', 'egrep', 'fgrep', 'ag'].includes(exe)) return 'text_search';
   if (['ls', 'find', 'fd', 'tree', 'du', 'stat'].includes(exe)) return 'file_discovery';
   if (['cat', 'sed', 'head', 'tail', 'less', 'wc'].includes(exe)) return 'file_reading';
@@ -47,7 +75,7 @@ function familyFor(words: string[]): string {
       (action === 'run' && /^(test(?::.*)?|build(?::.*)?|check|lint|typecheck)$/.test(args[args.indexOf('run') + 1] ?? ''))) return 'tests_builds';
     return 'unknown';
   }
-  if (['pytest', 'vitest', 'jest', 'tsc', 'make', 'cmake', 'xcodebuild', 'swift', 'dotnet', 'cargo', 'go', 'mvn', 'gradle'].includes(exe)) {
+  if (['pytest', 'vitest', 'jest', 'playwright', 'tsc', 'make', 'cmake', 'xcodebuild', 'swift', 'dotnet', 'cargo', 'go', 'mvn', 'gradle'].includes(exe)) {
     if (['swift', 'dotnet', 'cargo', 'go'].includes(exe) && !args.some(a => ['test', 'build', 'check', 'run'].includes(a))) return 'unknown';
     return 'tests_builds';
   }
