@@ -174,6 +174,13 @@ export class EpisodeDriver {
     } catch (error) { this.failure = error; }
   }
 
+  thenSubmittedRequestsAreIdentical(): void {
+    assert.ok(this.submissions.length > 1);
+    for (const submission of this.submissions) {
+      assert.equal(submission.request, this.submissions[0]!.request);
+    }
+  }
+
   thenSubmissionCountIs(count: number): void {
     assert.equal(this.submissions.length, count);
   }

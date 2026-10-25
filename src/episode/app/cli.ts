@@ -1,15 +1,18 @@
 import { EpisodeError } from '../domain/errors.ts';
 import { classifyEpisode } from './classify.ts';
+import { formatEpisodeText } from './format-text.ts';
 import type { ProviderPort } from './provider.ts';
 
 export const EPISODE_USAGE = `Episode commands:
   node src/cli.ts episode classify <session.jsonl> --from <entry-id> --at <user-entry-id>
+    [--format json|text]
 
 Submits one Jev classification request for the explicitly selected episode.
 The provider comes from JEV_PROVIDER (typesafe, openrouter) and its credential from
 TYPESAFE_API_KEY or OPENROUTER_API_KEY. Selected episode evidence is sent unredacted.
 
-JSON only on stdout. Exit codes: 0 classified, 1 fatal/invocation error.
+JSON on stdout by default; --format text prints a readable summary without provider/model details.
+Exit codes: 0 classified, 1 fatal/invocation error.
 `;
 
 export interface EpisodeCliDependencies {
@@ -20,12 +23,13 @@ export interface EpisodeCliDependencies {
   now?: () => number;
 }
 
-interface ClassifyArguments { file: string; from: string; at: string }
+interface ClassifyArguments { file: string; from: string; at: string; format: 'json' | 'text' }
 
 function parseClassify(args: string[]): ClassifyArguments {
   let file: string | undefined;
   let from: string | undefined;
   let at: string | undefined;
+  let format: 'json' | 'text' | undefined;
   for (let index = 0; index < args.length; index++) {
     const argument = args[index]!;
     if (argument === '--from' || argument === '--at') {
@@ -40,6 +44,13 @@ function parseClassify(args: string[]): ClassifyArguments {
         at = value;
       }
       index++;
+    } else if (argument === '--format') {
+      const value = args[index + 1];
+      if (format !== undefined || (value !== 'json' && value !== 'text')) {
+        throw new EpisodeError('invalid_arguments', 'expected one --format json or text');
+      }
+      format = value;
+      index++;
     } else if (argument.startsWith('--')) {
       throw new EpisodeError('invalid_arguments', 'unknown option');
     } else {
@@ -50,7 +61,7 @@ function parseClassify(args: string[]): ClassifyArguments {
   if (file === undefined || file === '' || from === undefined || at === undefined) {
     throw new EpisodeError('invalid_arguments', 'expected a session file, --from and --at');
   }
-  return { file, from, at };
+  return { file, from, at, format: format ?? 'json' };
 }
 
 // Fixed, content-free diagnostics: the code plus a non-sensitive detail only.
@@ -73,15 +84,17 @@ export async function runEpisodeCommand(args: string[], dependencies: EpisodeCli
     return 1;
   }
   try {
-    const parsed = parseClassify(args.slice(1));
+    const { format, ...selection } = parseClassify(args.slice(1));
     const report = await classifyEpisode({
-      ...parsed,
+      ...selection,
       env: dependencies.env ?? process.env,
       providers: dependencies.providers,
       ...(dependencies.now === undefined ? {} : { now: dependencies.now }),
-      onProviderResolved: provider => stderr(`provider=${provider.name} model=${provider.model}\n`),
+      onProviderResolved: provider => {
+        if (format === 'json') stderr(`provider=${provider.name} model=${provider.model}\n`);
+      },
     });
-    stdout(JSON.stringify(report, null, 2) + '\n');
+    stdout(format === 'text' ? formatEpisodeText(report.answers) : JSON.stringify(report, null, 2) + '\n');
     return 0;
   } catch (error) {
     stderr(diagnostic(error) + '\n');

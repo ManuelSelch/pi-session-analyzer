@@ -71,8 +71,17 @@ JEV_PROVIDER=openrouter OPENROUTER_API_KEY=... node src/cli.ts episode classify 
   --from <start-entry-id> --at <user-intervention-entry-id>
 ```
 
+For a presentation-friendly terminal summary, add `--format text`:
+
+```sh
+JEV_PROVIDER=openrouter node src/cli.ts episode classify demo-session/demo-session.jsonl \
+  --from start-0 --at user-correct-1 --format text
+```
+
+Export `OPENROUTER_API_KEY` in your shell first. Text output shows readable intervention/issue labels, ranked intervention probabilities, the issue probability and confidence, and review flags. It omits provider/model details, source paths, hashes, usage, transcript text and the disclaimer footer. The provider notice is also hidden in text mode. Confidence refers to the observable-issue answer, not an accuracy score. Non-corrections show the effective issue and its metrics as not applicable. Output is plain text without ANSI escapes, so it can also be redirected. JSON remains the default (`--format json`); its report fields and provider notice are unchanged.
+
 - **Submitting is the command's purpose.** There is no preview mode and no extra confirmation flag: the selected episode evidence leaves the machine as-is. It is **not secret-redacted**, so choose episodes you are willing to send to the provider.
-- **Provider:** `JEV_PROVIDER` selects `typesafe` (default, `TYPESAFE_API_KEY`, model `jev-1.14.0`) or `openrouter` (`OPENROUTER_API_KEY`, model `typesafe/jev-1.14`). An unknown value or missing credential fails before any request. The resolved provider and model are printed once on stderr and recorded in the output.
+- **Provider:** `JEV_PROVIDER` selects `typesafe` (default, `TYPESAFE_API_KEY`, model `jev-1.14.0`) or `openrouter` (`OPENROUTER_API_KEY`, model `typesafe/jev-1.14`). An unknown value or missing credential fails before any request. In JSON mode, the resolved provider and model are printed once on stderr and recorded in the output.
 - **Only Jev answers.** OpenRouter uses its native Decisions endpoint (`https://openrouter.ai/api/alpha/decisions`), not chat completions or `typesafe/jev-router`, which routes to other models. Only an OpenRouter key is needed. See the [official Jev guide](https://openrouter.ai/blog/insights/what-is-jev/). Provider differences live behind one provider port; the rubric, payload limit and answer validation are provider-independent.
 - **One request per invocation**, 30-second total deadline, no retries, redirects rejected, response capped at 65,536 bytes. Failures exit 1 with a fixed diagnostic on stderr and no JSON on stdout; success exits 0 with one JSON document.
 - **Output** contains schema/rubric versions, provider, requested/returned model, local source references, warnings, snapshot/request hashes, both validated answers with full probabilities and confidence, `effectiveIssue`, contradiction/uncertainty flags, token usage, optional provider cost, elapsed time and `reviewRequired: true`. Probabilities are validated (option keys, ranges, totals, selected maximum) but never treated as calibrated accuracy.

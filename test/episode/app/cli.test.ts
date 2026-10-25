@@ -41,6 +41,63 @@ test('classifies in process and writes JSON to stdout with one provider notice o
   assert.equal(report.source.references[0].entryId, 'native-0');
 });
 
+test('supports text and explicit JSON formats without changing the classification request', async t => {
+  const episode = await EpisodeDriver.open(t);
+  await episode.givenConversation(['PRIVATE_REQUEST', 'PRIVATE_CLAIM', 'PRIVATE_CORRECTION']);
+  episode.givenProvider('openrouter', { model: 'typesafe/jev-1.14', credentialEnvVar: 'OPENROUTER_API_KEY', response: envelope('typesafe/jev-1.14') });
+  for (const format of ['text', 'json']) {
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = await runEpisodeCommand(['classify', episode.sessionFile, '--from', 'native-0', '--at', 'native-2', '--format', format], {
+      providers: episode.registry, env: { JEV_PROVIDER: 'openrouter', OPENROUTER_API_KEY: 'secret-key' },
+      stdout: value => out.push(value), stderr: value => err.push(value),
+    });
+    assert.equal(code, 0);
+    if (format === 'text') {
+      assert.match(out.join(''), /Episode Analysis/);
+      assert.match(out.join(''), /Unsupported completion claim/);
+      assert.equal(err.join(''), '');
+      assert.doesNotMatch(out.join(''), /openrouter|jev-1|PRIVATE_|secret-key|snapshotHash/);
+    } else {
+      assert.equal(JSON.parse(out.join('')).provider, 'openrouter');
+      assert.deepEqual(err, ['provider=openrouter model=typesafe/jev-1.14\n']);
+    }
+  }
+  assert.equal(episode.submissionCount, 2);
+  episode.thenSubmittedRequestsAreIdentical();
+});
+
+test('rejects invalid, missing and duplicate formats before submission', async t => {
+  const episode = await EpisodeDriver.open(t);
+  await episode.givenConversation(['Request', 'Claim', 'Correction']);
+  for (const flags of [['--format'], ['--format', 'SECRET_FORMAT'], ['--format', 'text', '--format', 'json']]) {
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = await runEpisodeCommand(['classify', episode.sessionFile, '--from', 'native-0', '--at', 'native-2', ...flags], {
+      providers: {}, env: {}, stdout: value => out.push(value), stderr: value => err.push(value),
+    });
+    assert.equal(code, 1);
+    assert.equal(out.join(''), '');
+    assert.match(err.join(''), /^episode invalid_arguments/);
+    assert.doesNotMatch(err.join(''), /SECRET_FORMAT/);
+  }
+  assert.equal(episode.submissionCount, 0);
+});
+
+test('text format preserves failure diagnostics and emits no partial report', async t => {
+  const episode = await EpisodeDriver.open(t);
+  await episode.givenConversation(['Request', 'Claim', 'Correction']);
+  episode.givenProvider('typesafe', { model: 'jev-1.14.0', response: envelope('wrong-model') });
+  const out: string[] = [];
+  const err: string[] = [];
+  const code = await runEpisodeCommand(['classify', episode.sessionFile, '--from', 'native-0', '--at', 'native-2', '--format', 'text'], {
+    providers: episode.registry, env: { TYPESAFE_API_KEY: 'key' }, stdout: value => out.push(value), stderr: value => err.push(value),
+  });
+  assert.equal(code, 1);
+  assert.equal(out.join(''), '');
+  assert.equal(err.join(''), 'episode model_mismatch\n');
+});
+
 test('prints usage for help and rejects malformed or unknown invocations without submitting', async t => {
   const episode = await EpisodeDriver.open(t);
   await episode.givenConversation(['Request', 'Claim', 'Correction']);
