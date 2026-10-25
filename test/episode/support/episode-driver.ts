@@ -5,13 +5,26 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TestContext } from 'node:test';
 import { prepareEpisode } from '../../../src/episode/app/prepare.ts';
+import { classifyEpisode } from '../../../src/episode/app/classify.ts';
+import type { ClassifyReport } from '../../../src/episode/app/classify.ts';
+import type { ProviderPort } from '../../../src/episode/app/provider.ts';
 import { header, jsonl } from '../../helpers.ts';
+
+interface Submission { request: string; credential: string }
+interface ProviderSpec { model?: string; credentialEnvVar?: string; accepts?: (returned: string) => boolean; response: unknown }
 
 export class EpisodeDriver {
   private directory: string;
   private file: string;
   private original = '';
   private prepared?: Awaited<ReturnType<typeof prepareEpisode>>;
+  private providers: Record<string, ProviderPort> = {};
+  private models: Record<string, string> = {};
+  private env: Record<string, string | undefined> = {};
+  private submissions: Submission[] = [];
+  private notices: string[] = [];
+  private classified?: ClassifyReport;
+  private failure?: unknown;
 
   private constructor(directory: string) {
     this.directory = directory;
@@ -90,6 +103,79 @@ export class EpisodeDriver {
   async thenPreparationFails(code: string, missingFile = false): Promise<void> {
     if (missingFile) await rm(this.file, { force: true });
     await assert.rejects(prepareEpisode(this.file, 'native-0', 'native-2'), { code, message: code });
+  }
+
+  get sessionFile(): string { return this.file; }
+  get report(): ClassifyReport | undefined { return this.classified; }
+  get submissionCount(): number { return this.submissions.length; }
+  get registry(): Record<string, ProviderPort> { return this.providers; }
+  get environment(): Record<string, string | undefined> { return this.env; }
+
+  givenProvider(name: string, spec: ProviderSpec): void {
+    this.models[name] = spec.model ?? `${name}-model`;
+    this.providers[name] = {
+      name,
+      model: this.models[name]!,
+      credentialEnvVar: spec.credentialEnvVar ?? `${name.toUpperCase()}_API_KEY`,
+      acceptsReturnedModel: spec.accepts ?? (returned => returned === this.models[name]),
+      submit: async (request, credential) => {
+        this.submissions.push({ request, credential });
+        return spec.response;
+      },
+    };
+  }
+
+  givenEnvironment(env: Record<string, string | undefined>): void {
+    this.env = env;
+  }
+
+  async whenClassify(from = 'native-0', at = 'native-2'): Promise<void> {
+    try {
+      this.classified = await classifyEpisode({
+        file: this.file, from, at, env: this.env, providers: this.providers,
+        onProviderResolved: provider => this.notices.push(`provider=${provider.name} model=${provider.model}`),
+      });
+    } catch (error) { this.failure = error; }
+  }
+
+  thenSubmissionCountIs(count: number): void {
+    assert.equal(this.submissions.length, count);
+  }
+
+  async thenSubmittedThePreparedRequest(): Promise<void> {
+    const expected = await prepareEpisode(this.file, 'native-0', 'native-2');
+    assert.equal(this.submissions.length, 1);
+    assert.equal(this.submissions[0]!.request, expected.serializedRequest);
+    assert.ok(this.classified);
+    assert.equal(this.classified.requestHash, expected.requestHash);
+    assert.equal(this.classified.payloadBytes, expected.payloadBytes);
+  }
+
+  thenClassifiedWith(provider: string, returnedModel = this.models[provider]): void {
+    assert.ok(this.classified);
+    assert.equal(this.classified.provider, provider);
+    assert.equal(this.classified.requestedModel, this.models[provider]);
+    assert.equal(this.classified.returnedModel, returnedModel);
+    assert.equal(this.classified.reviewRequired, true);
+    assert.equal(typeof this.classified.elapsedMs, 'number');
+    assert.equal(this.classified.schemaVersion, 1);
+    assert.equal(this.classified.rubricVersion, 'episode-rubric-v1');
+    assert.deepEqual(this.notices, [`provider=${provider} model=${this.models[provider]}`]);
+  }
+
+  thenReportExcludes(text: string): void {
+    assert.ok(this.classified);
+    assert.ok(!JSON.stringify(this.classified).includes(text));
+  }
+
+  thenClassificationFails(code: string, detail?: string): void {
+    const failure = this.failure as { code?: string; detail?: string } | undefined;
+    assert.ok(failure, 'expected a classification failure');
+    assert.equal(failure.code, code);
+    if (detail !== undefined) assert.equal(failure.detail, detail);
+    assert.equal(this.classified, undefined);
+    // The provider notice precedes submission, so every submit attempt has exactly one.
+    assert.equal(this.notices.length, this.submissions.length);
   }
 
   thenParserWarningsStayLocal(): void {

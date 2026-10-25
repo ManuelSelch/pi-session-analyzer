@@ -62,11 +62,22 @@ Rules are versioned separately (`classification.version`) from raw metrics (`met
 - Suspected retries are only identical commands whose next assistant entry directly follows that failed result on the same branch. They are explicitly **inferred**, can be intentional repetitions, and miss retries with intervening entries or changed arguments. No reliable retry-time or wasted-effort metric is claimed.
 - Group shares and rates are fractions (0–1). `shareOfAllCalls` uses all observed assistant bash calls; `shareOfAllFailures` uses all matched tool-reported bash errors. Reasons partition errors; families partition all calls. Affected-project counts use known header cwd strings, not repository identity; unknown cwd sessions are reported separately.
 
-## Episode classification (S1 library)
+## Episode classification
 
-The [episode roadmap](docs/episode-classification/REQUIREMENTS.md) is separate from the legacy bash roadmap. Its first slice is implemented as `prepareEpisode(file, from, at)` in [src/episode/app/prepare.ts](src/episode/app/prepare.ts): select an inclusive ancestry-bounded episode from one v2/v3 file, project evidence, and return the exact serialized two-Choice Jev request with local references, warnings and SHA-256 provenance.
+The [episode roadmap](docs/episode-classification/REQUIREMENTS.md) is separate from the legacy bash roadmap. Slices 1–2 are implemented: `prepareEpisode(file, from, at)` in [src/episode/app/prepare.ts](src/episode/app/prepare.ts) selects an inclusive ancestry-bounded episode from one v2/v3 file, projects evidence, and builds the exact two-Choice Jev request; `episode classify` submits it and validates the returned answers.
 
-No episode CLI or network submission exists yet. The pinned model is `jev-1.14.0`; the rubric is `episode-rubric-v1`. Requests exceeding **24,000 UTF-8 bytes**, including the rubric, are rejected without trimming. Source-file paths and native entry mappings stay local; paths already present in transcript text/tool arguments remain evidence. Thinking and recognized binary/image blocks are omitted with warnings. Evidence is **not secret-redacted**; inspect it privately before any future submission. Active files may grow between invocations; each preparation uses one read snapshot. Construction tests do not establish model accuracy.
+```sh
+JEV_PROVIDER=openrouter OPENROUTER_API_KEY=... node src/cli.ts episode classify /path/to/session.jsonl \
+  --from <start-entry-id> --at <user-intervention-entry-id>
+```
+
+- **Submitting is the command's purpose.** There is no preview mode and no extra confirmation flag: the selected episode evidence leaves the machine as-is. It is **not secret-redacted**, so choose episodes you are willing to send to the provider.
+- **Provider:** `JEV_PROVIDER` selects `typesafe` (default, `TYPESAFE_API_KEY`, model `jev-1.14.0`) or `openrouter` (`OPENROUTER_API_KEY`, model `typesafe/jev-1.14`). An unknown value or missing credential fails before any request. The resolved provider and model are printed once on stderr and recorded in the output.
+- **Only Jev answers.** Provider differences live behind one provider port; the rubric, payload limit and answer validation are provider-independent.
+- **One request per invocation**, 30-second total deadline, no retries, redirects rejected, response capped at 65,536 bytes. Failures exit 1 with a fixed diagnostic on stderr and no JSON on stdout; success exits 0 with one JSON document.
+- **Output** contains schema/rubric versions, provider, requested/returned model, local source references, warnings, snapshot/request hashes, both validated answers with full probabilities and confidence, `effectiveIssue`, contradiction/uncertainty flags, token usage, optional provider cost, elapsed time and `reviewRequired: true`. Probabilities are validated (option keys, ranges, totals, selected maximum) but never treated as calibrated accuracy.
+- Requests exceeding **24,000 UTF-8 bytes**, including the rubric, are rejected without trimming. Source-file paths and native entry mappings stay local; paths already present in transcript text or tool arguments remain evidence. Thinking and recognized binary/image blocks are omitted with warnings.
+- Existing bash commands remain offline and unchanged. Automated tests use synthetic fixtures and mocked transport only; no credentials, paid calls or personal transcripts are committed.
 
 ## Development
 
@@ -85,7 +96,8 @@ Small modules, plain functions:
 - `src/classify.ts`: versioned purpose/reason heuristics.
 - `src/reports.ts`: bounded public reports and grouped metrics.
 - `src/cli.ts`: argument handling and JSON/exit-code wiring.
-- `src/episode/domain/`: episode selection, evidence projection and request/rubric construction.
-- `src/episode/app/`: read-only episode preparation and provenance.
+- `src/episode/domain/`: episode selection, evidence projection, request/rubric construction and answer validation.
+- `src/episode/app/`: episode preparation, provider port and the classification use case and CLI.
+- `src/episode/infra/`: bounded System One HTTP adapter and the TypeSafe/OpenRouter provider profiles.
 
 Avoid frameworks, plugin systems, and speculative abstractions. Add a synthetic regression test before adjusting a rule based on private session evidence.

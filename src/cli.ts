@@ -2,6 +2,8 @@ import { homedir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { callsReport, summaryReport } from './reports.ts';
+import { EPISODE_USAGE, runEpisodeCommand } from './episode/app/cli.ts';
+import { createProviders } from './episode/infra/providers.ts';
 
 const usage = `Usage:
   node src/cli.ts bash summary [--root <directory>] [--include-content]
@@ -19,12 +21,19 @@ function integer(value: string | undefined, fallback: number, max: number) {
   return n;
 }
 async function main() {
-  const { values, positionals } = parseArgs({ allowPositionals: true, options: {
+  const argv = process.argv.slice(2);
+  // Episode commands are dispatched before the bash parser so neither command
+  // accepts the other's flags.
+  if (argv[0] === 'episode') {
+    process.exitCode = await runEpisodeCommand(argv.slice(1), { providers: createProviders(), env: process.env });
+    return;
+  }
+  const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: {
     root: { type: 'string' }, failed: { type: 'boolean' }, 'include-content': { type: 'boolean' },
     family: { type: 'string' }, reason: { type: 'string' },
     limit: { type: 'string' }, offset: { type: 'string' }, help: { type: 'boolean' },
   } });
-  if (values.help) { process.stdout.write(usage); return; }
+  if (values.help) { process.stdout.write(usage + EPISODE_USAGE); return; }
   const [noun, action, file] = positionals;
   if (noun !== 'bash') throw new Error(usage);
   let report;
