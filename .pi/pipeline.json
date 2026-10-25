@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "suites": {
+    "test": {
+      "command": [
+        "npm",
+        "test"
+      ],
+      "cwd": ".",
+      "timeoutSeconds": 120,
+      "staleAfterMinutes": 30,
+      "auto": "after-agent"
+    },
+    "typecheck": {
+      "command": [
+        "npm",
+        "run",
+        "typecheck"
+      ],
+      "cwd": ".",
+      "timeoutSeconds": 120,
+      "staleAfterMinutes": 30,
+      "auto": "after-agent"
+    }
+  },
+  "prepare": {
+    "command": [
+      "npm",
+      "ci",
+      "--ignore-scripts"
+    ],
+    "cwd": ".",
+    "timeoutSeconds": 180
+  }
+}
