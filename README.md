@@ -78,6 +78,9 @@ JEV_PROVIDER=openrouter OPENROUTER_API_KEY=... node src/cli.ts episode classify 
 - **Output** contains schema/rubric versions, provider, requested/returned model, local source references, warnings, snapshot/request hashes, both validated answers with full probabilities and confidence, `effectiveIssue`, contradiction/uncertainty flags, token usage, optional provider cost, elapsed time and `reviewRequired: true`. Probabilities are validated (option keys, ranges, totals, selected maximum) but never treated as calibrated accuracy.
 - Requests exceeding **24,000 UTF-8 bytes**, including the rubric, are rejected without trimming. Source-file paths and native entry mappings stay local; paths already present in transcript text or tool arguments remain evidence. Thinking and recognized binary/image blocks are omitted with warnings.
 - Existing bash commands remain offline and unchanged. Automated tests use synthetic fixtures and mocked transport only; no credentials, paid calls or personal transcripts are committed.
+- S3 validation is intentionally a private, one-off live check: select the explicit episode from the local Pi session, run it with `JEV_PROVIDER` and the matching API key, and keep the result in `reports/` only if the user explicitly wants a local artifact. If either credential is unavailable, stop with the fixed "missing_credentials" diagnostic instead of pretending a validation ran.
+
+See [docs/episode-classification/S3-VALIDATION.md](docs/episode-classification/S3-VALIDATION.md) for the live-validation checklist and private-session guardrails.
 
 ## Development
 
