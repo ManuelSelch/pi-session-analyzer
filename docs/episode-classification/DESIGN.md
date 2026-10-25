@@ -7,9 +7,9 @@ Select an explicitly bounded episode from one native Pi session snapshot, projec
 | Package/module | Component | Change | Responsibility |
 |---|---|---|---|
 | Existing session module | [`readSession` / `parseSession`](../../src/sessions.ts) | Reused | Read once, parse v2/v3 entries, retain source fingerprint and diagnostics |
-| Proposed `src/episode/Domain` | Selection and projection | New | Validate the selected ancestry; normalize permitted evidence and limitations without I/O |
-| Proposed `src/episode/Domain` | Rubric and request builder | New | Own fixed criteria, schema/rubric versions, deterministic request serialization and size enforcement |
-| Proposed `src/episode/App` | Episode preparation | New | Compose parser, domain functions and Node SHA-256; return provider payload plus local provenance |
+| Proposed `src/episode/domain` | Selection and projection | New | Validate the selected ancestry; normalize permitted evidence and limitations without I/O |
+| Proposed `src/episode/domain` | Rubric and request builder | New | Own fixed criteria, schema/rubric versions, deterministic request serialization and size enforcement |
+| Proposed `src/episode/app` | Episode preparation | New | Compose parser, domain functions and Node SHA-256; return provider payload plus local provenance |
 
 All state belongs to one preparation invocation. Reuse the existing session module's exported types/functions as its shared parser contract; do not restructure legacy analysis or introduce a second parser. New tests mirror the feature/layer paths. No runtime dependency is added.
 
@@ -39,7 +39,7 @@ Failures return safe typed codes, not transcript fragments. S1 has no network pa
 - Use an explicit evidence allowlist rather than forwarding native messages wholesale. Unknown content is disclosed, not guessed; tool arguments and text remain sensitive and are not automatically redacted. Exclude recognized image/binary content and hidden thinking rather than forwarding their data.
 - Parser warnings outside the range remain visible locally but do not automatically invalidate a trustworthy selected chain. Ambiguous IDs are already removed by the parser and cannot satisfy a boundary or traversed link.
 - Missing context and unsupported content reduce evidential completeness; they are not automatic correction labels. A well-formed episode may still yield insufficient evidence later.
-- Keep pure rules in Domain and filesystem/hash orchestration in App. No speculative transport interface or classifier framework is needed for S1.
+- Keep pure rules in `domain` and filesystem/hash orchestration in `app`. No speculative transport interface or classifier framework is needed for S1.
 
 ## Verification
 - Planned domain tests cover v2/v3 selection, inclusive boundaries, repeated text with distinct IDs, siblings/later entries, non-user intervention, ambiguous/missing IDs, cycles, broken links and earlier-history omission.

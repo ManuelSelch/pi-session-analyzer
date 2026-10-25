@@ -62,6 +62,12 @@ Rules are versioned separately (`classification.version`) from raw metrics (`met
 - Suspected retries are only identical commands whose next assistant entry directly follows that failed result on the same branch. They are explicitly **inferred**, can be intentional repetitions, and miss retries with intervening entries or changed arguments. No reliable retry-time or wasted-effort metric is claimed.
 - Group shares and rates are fractions (0–1). `shareOfAllCalls` uses all observed assistant bash calls; `shareOfAllFailures` uses all matched tool-reported bash errors. Reasons partition errors; families partition all calls. Affected-project counts use known header cwd strings, not repository identity; unknown cwd sessions are reported separately.
 
+## Episode classification (S1 library)
+
+The [episode roadmap](docs/episode-classification/REQUIREMENTS.md) is separate from the legacy bash roadmap. Its first slice is implemented as `prepareEpisode(file, from, at)` in [src/episode/app/prepare.ts](src/episode/app/prepare.ts): select an inclusive ancestry-bounded episode from one v2/v3 file, project evidence, and return the exact serialized two-Choice Jev request with local references, warnings and SHA-256 provenance.
+
+No episode CLI or network submission exists yet. The pinned model is `jev-1.14.0`; the rubric is `episode-rubric-v1`. Requests exceeding **24,000 UTF-8 bytes**, including the rubric, are rejected without trimming. Source-file paths and native entry mappings stay local; paths already present in transcript text/tool arguments remain evidence. Thinking and recognized binary/image blocks are omitted with warnings. Evidence is **not secret-redacted**; inspect it privately before any future submission. Active files may grow between invocations; each preparation uses one read snapshot. Construction tests do not establish model accuracy.
+
 ## Development
 
 ```sh
@@ -79,5 +85,7 @@ Small modules, plain functions:
 - `src/classify.ts`: versioned purpose/reason heuristics.
 - `src/reports.ts`: bounded public reports and grouped metrics.
 - `src/cli.ts`: argument handling and JSON/exit-code wiring.
+- `src/episode/domain/`: episode selection, evidence projection and request/rubric construction.
+- `src/episode/app/`: read-only episode preparation and provenance.
 
 Avoid frameworks, plugin systems, and speculative abstractions. Add a synthetic regression test before adjusting a rule based on private session evidence.
