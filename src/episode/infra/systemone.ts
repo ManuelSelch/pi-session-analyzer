@@ -47,37 +47,10 @@ async function readBounded(response: Response, aborted: () => boolean): Promise<
   }
 }
 
-function normalizeOpenRouterChatCompletion(profile: SystemOneProfile, envelope: unknown): unknown {
-  if (!envelope || typeof envelope !== 'object' || !('choices' in envelope)) throw new EpisodeError('invalid_response');
-  const choices = (envelope as { choices?: Array<{ message?: { content?: unknown } }> }).choices;
-  const content = choices?.[0]?.message?.content;
-  if (typeof content !== 'string') throw new EpisodeError('invalid_response');
-  const trimmed = content.trim();
-  const stripped = trimmed.startsWith('```')
-    ? trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
-    : trimmed;
-  let parsed: unknown;
-  try { parsed = JSON.parse(stripped); } catch { throw new EpisodeError('invalid_response'); }
-  if (!parsed || typeof parsed !== 'object') throw new EpisodeError('invalid_response');
-  const payload = parsed as Record<string, unknown>;
-  const usage = payload.usage && typeof payload.usage === 'object' ? payload.usage as Record<string, unknown> : {};
-  const normalizedUsage = {
-    input_tokens: Number((usage.input_tokens ?? usage.prompt_tokens ?? 0) as number),
-    output_tokens: Number((usage.output_tokens ?? usage.completion_tokens ?? 0) as number),
-    ...(usage.cost !== undefined && typeof usage.cost === 'number' ? { cost: usage.cost } : {}),
-  };
-  return {
-    model: typeof payload.model === 'string' ? payload.model : profile.model,
-    answers: payload.answers,
-    usage: normalizedUsage,
-  };
-}
-
 export function createSystemOneProvider(profile: SystemOneProfile,
   options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {}): ProviderPort {
   const doFetch = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
-  const openRouterChatCompletion = profile.name === 'openrouter' && profile.model === 'typesafe/jev-router';
   return {
     name: profile.name,
     model: profile.model,
@@ -88,28 +61,11 @@ export function createSystemOneProvider(profile: SystemOneProfile,
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
         let response: Response;
-        const requestBody = openRouterChatCompletion ? JSON.stringify({
-          model: profile.model,
-          messages: [{
-            role: 'user',
-            content: 'Return only valid JSON with keys model, answers, and usage. Use the supplied request as the evidence source and do not add commentary.\n\n' + serializedRequest,
-          }],
-          temperature: 0,
-          max_tokens: 1024,
-        }) : serializedRequest;
-        const requestHeaders = openRouterChatCompletion
-          ? {
-              authorization: `Bearer ${credential}`,
-              'content-type': 'application/json',
-              'HTTP-Referer': 'https://localhost',
-              'X-Title': 'pi-session-analyzer',
-            }
-          : { authorization: `Bearer ${credential}`, 'content-type': 'application/json' };
         try {
-          response = await doFetch(openRouterChatCompletion ? 'https://openrouter.ai/api/v1/chat/completions' : profile.url, {
+          response = await doFetch(profile.url, {
             method: 'POST',
-            headers: requestHeaders,
-            body: requestBody,
+            headers: { authorization: `Bearer ${credential}`, 'content-type': 'application/json' },
+            body: serializedRequest,
             redirect: 'manual',
             signal: controller.signal,
           });
@@ -126,8 +82,7 @@ export function createSystemOneProvider(profile: SystemOneProfile,
         }
         const text = await readBounded(response, () => controller.signal.aborted);
         try {
-          const parsed = JSON.parse(text) as unknown;
-          return openRouterChatCompletion ? normalizeOpenRouterChatCompletion(profile, parsed) : parsed;
+          return JSON.parse(text) as unknown;
         } catch { throw new EpisodeError('invalid_response'); }
       } finally {
         clearTimeout(timer);

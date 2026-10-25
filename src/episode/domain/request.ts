@@ -55,9 +55,9 @@ export const ISSUE_OPTIONS = Object.keys(issueCriteria) as ObservableIssue[];
 
 export interface BuiltRequest { serializedRequest: string; payloadBytes: number }
 
-export function buildRequest(projection: Projection): BuiltRequest {
+export function buildRequest(projection: Projection, model = MODEL): BuiltRequest {
   const serializedRequest = JSON.stringify({
-    model: MODEL,
+    model,
     state: {
       entries: projection.entries,
       limitations: projection.warnings,

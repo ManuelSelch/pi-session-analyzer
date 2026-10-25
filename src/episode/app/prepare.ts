@@ -28,15 +28,15 @@ export interface PreparedEpisode {
 }
 
 // No scan, write, credentials, extension loading or transport in this use case.
-export async function prepareEpisode(file: string, from: string, at: string): Promise<PreparedEpisode> {
+export async function prepareEpisode(file: string, from: string, at: string, model = MODEL): Promise<PreparedEpisode> {
   const session = await readSession(file).catch(() => { throw new EpisodeError('unreadable_session'); });
   const selected = selectEpisode(session, from, at);
   const projection = projectEpisode(selected);
-  const request = buildRequest(projection);
+  const request = buildRequest(projection, model);
   return {
     schemaVersion: SCHEMA_VERSION,
     rubricVersion: RUBRIC_VERSION,
-    model: MODEL,
+    model,
     source: {
       file: session.file,
       sessionId: session.id!,

@@ -44,6 +44,7 @@ test('selects the provider profile from the environment and uses its own credent
   episode.givenEnvironment({ JEV_PROVIDER: 'openrouter', TYPESAFE_API_KEY: 'wrong-key', OPENROUTER_API_KEY: 'right-key' });
   await episode.whenClassify();
   episode.thenClassifiedWith('openrouter', 'typesafe/jev-1.14-20260917');
+  await episode.thenSubmittedThePreparedRequest();
 });
 
 test('never submits for an unknown provider, missing credential or invalid episode', async t => {

@@ -43,8 +43,8 @@ export interface ClassifyReport {
 
 // One invocation: prepare once, resolve one provider and credential, submit once.
 export async function classifyEpisode(options: ClassifyOptions): Promise<ClassifyReport> {
-  const prepared = await prepareEpisode(options.file, options.from, options.at);
   const provider = resolveProvider(options.providers, options.env);
+  const prepared = await prepareEpisode(options.file, options.from, options.at, provider.model);
   const credential = readCredential(provider, options.env);
   options.onProviderResolved?.(provider);
   const now = options.now ?? Date.now;

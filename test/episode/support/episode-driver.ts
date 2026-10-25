@@ -9,6 +9,7 @@ import { classifyEpisode } from '../../../src/episode/app/classify.ts';
 import type { ClassifyReport } from '../../../src/episode/app/classify.ts';
 import type { ProviderPort } from '../../../src/episode/app/provider.ts';
 import { header, jsonl } from '../../helpers.ts';
+import { createProviders } from '../../../src/episode/infra/providers.ts';
 
 interface Submission { request: string; credential: string }
 interface ProviderSpec { model?: string; credentialEnvVar?: string; accepts?: (returned: string) => boolean; response: unknown }
@@ -23,6 +24,7 @@ export class EpisodeDriver {
   private env: Record<string, string | undefined> = {};
   private submissions: Submission[] = [];
   private notices: string[] = [];
+  private httpCalls: { url: string; init: RequestInit }[] = [];
   private classified?: ClassifyReport;
   private failure?: unknown;
 
@@ -125,6 +127,40 @@ export class EpisodeDriver {
     };
   }
 
+  givenProductionProviders(response: unknown, status = 200): void {
+    this.providers = createProviders({ fetchImpl: async (url, init) => {
+      this.httpCalls.push({ url: String(url), init: init! });
+      return new Response(JSON.stringify(response), { status });
+    } });
+    this.models = Object.fromEntries(Object.entries(this.providers).map(([name, provider]) => [name, provider.model]));
+  }
+
+  async thenNativeSubmissionIs(provider: 'typesafe' | 'openrouter'): Promise<void> {
+    assert.equal(this.httpCalls.length, 1);
+    const { url, init } = this.httpCalls[0]!;
+    assert.equal(url, provider === 'openrouter'
+      ? 'https://openrouter.ai/api/alpha/decisions' : 'https://api.typesafe.ai/v1/systemone');
+    const body = init.body as string;
+    const request = JSON.parse(body);
+    assert.equal(request.model, provider === 'openrouter' ? 'typesafe/jev-1.14' : 'jev-1.14.0');
+    assert.deepEqual(Object.keys(request), ['model', 'state', 'questions']);
+    const prepared = await prepareEpisode(this.file, 'native-0', 'native-2', this.models[provider]);
+    assert.equal(body, prepared.serializedRequest);
+    assert.equal(init.method, 'POST');
+    assert.equal(init.redirect, 'manual');
+    assert.deepEqual(init.headers, {
+      authorization: `Bearer ${this.env[provider === 'openrouter' ? 'OPENROUTER_API_KEY' : 'TYPESAFE_API_KEY']}`,
+      'content-type': 'application/json',
+    });
+    assert.ok(this.classified);
+    assert.equal(this.classified.requestHash, createHash('sha256').update(body).digest('hex'));
+    assert.equal(this.classified.payloadBytes, Buffer.byteLength(body));
+  }
+
+  thenHttpRequestCountIs(count: number): void {
+    assert.equal(this.httpCalls.length, count);
+  }
+
   givenEnvironment(env: Record<string, string | undefined>): void {
     this.env = env;
   }
@@ -143,7 +179,8 @@ export class EpisodeDriver {
   }
 
   async thenSubmittedThePreparedRequest(): Promise<void> {
-    const expected = await prepareEpisode(this.file, 'native-0', 'native-2');
+    assert.ok(this.classified);
+    const expected = await prepareEpisode(this.file, 'native-0', 'native-2', this.classified.requestedModel);
     assert.equal(this.submissions.length, 1);
     assert.equal(this.submissions[0]!.request, expected.serializedRequest);
     assert.ok(this.classified);
@@ -175,7 +212,7 @@ export class EpisodeDriver {
     if (detail !== undefined) assert.equal(failure.detail, detail);
     assert.equal(this.classified, undefined);
     // The provider notice precedes submission, so every submit attempt has exactly one.
-    assert.equal(this.notices.length, this.submissions.length);
+    assert.equal(this.notices.length, this.submissions.length + this.httpCalls.length);
   }
 
   thenParserWarningsStayLocal(): void {

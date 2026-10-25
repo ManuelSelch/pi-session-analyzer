@@ -25,7 +25,7 @@ JEV_PROVIDER=typesafe TYPESAFE_API_KEY=... \
   --from 8fca4ad9 --at c3365bde
 ```
 
-If the provider is OpenRouter:
+If the provider is OpenRouter (native Jev `typesafe/jev-1.14` via `/api/alpha/decisions`, not Jev Router; no TypeSafe key required):
 
 ```sh
 JEV_PROVIDER=openrouter OPENROUTER_API_KEY=... \

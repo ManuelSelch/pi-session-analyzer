@@ -41,6 +41,18 @@ test('rubric encodes correction boundaries and pilot negative controls, not lexi
   assert.match(body.questions.observable_issue.criteria.speculative_diagnosis, /causal/);
 });
 
+test('uses the selected provider model without changing evidence or rubric and counts its bytes', () => {
+  const direct = buildRequest(projection());
+  const routed = buildRequest(projection(), 'typesafe/jev-1.14');
+  assert.deepEqual(JSON.parse(routed.serializedRequest), {
+    ...JSON.parse(direct.serializedRequest), model: 'typesafe/jev-1.14',
+  });
+  assert.equal(routed.payloadBytes, Buffer.byteLength(routed.serializedRequest));
+  const remaining = MAX_PAYLOAD_BYTES - buildRequest(projection(''), 'typesafe/jev-1.14').payloadBytes;
+  assert.equal(buildRequest(projection('a'.repeat(remaining)), 'typesafe/jev-1.14').payloadBytes, MAX_PAYLOAD_BYTES);
+  assert.throws(() => buildRequest(projection('a'.repeat(remaining + 1)), 'typesafe/jev-1.14'), { code: 'payload_too_large' });
+});
+
 test('enforces the inclusive byte limit on the full serialized payload without trimming', () => {
   const base = buildRequest(projection(''));
   const remaining = MAX_PAYLOAD_BYTES - base.payloadBytes;
